@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Saturn — Interactive Particle Field</title>
+  <style>
+    :root {
+      --bg-color: rgba(14, 14, 16, 0.72);
+      --text-color: #ffffff;
+      --accent-color: #00ffcc;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      overflow: hidden;
+      background-color: #030304;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: var(--text-color);
+    }
+
+    #canvas-container {
+      width: 100vw;
+      height: 100vh;
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+    }
+
+    #webcam {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      width: 160px;
+      height: 120px;
+      object-fit: cover;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      transform: scaleX(-1);
+      z-index: 10;
+      background: #000;
+      opacity: 0.85;
+      transition: opacity 0.2s ease;
+    }
+    #webcam:hover { opacity: 1; }
+
+    /* ---- Collapsed icon toggle ---- */
+    #panel-toggle {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      z-index: 20;
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
+      background: var(--bg-color);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      cursor: pointer;
+      transition: transform 0.15s ease, border-color 0.2s ease;
+    }
+    #panel-toggle:hover {
+      transform: scale(1.08);
+      border-color: var(--accent-color);
+    }
+    #panel-toggle.hidden { display: none; }
+
+    /* ---- Control panel ---- */
+    .ui-panel {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      z-index: 20;
+      background: var(--bg-color);
+      backdrop-filter: blur(14px);
+      border-radius: 16px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      width: 280px;
+      max-height: 85vh;
+      overflow-y: auto;
+      pointer-events: auto;
+      transform-origin: top left;
+      transition: opacity 0.18s ease, transform 0.18s ease;
+    }
+    .ui-panel.collapsed {
+      opacity: 0;
+      transform: scale(0.9);
+      pointer-events: none;
+      display: none;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 18px 14px 20px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .panel-header h2 {
+      margin: 0;
+      font-size: 15px;
+      letter-spacing: 0.5px;
+      color: var(--accent-color);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    #panel-minimize {
+      background: rgba(255, 255, 255, 0.08);
+      border: none;
+      color: #ccc;
+      width: 26px;
+      height: 26px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 16px;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #panel-minimize:hover { background: rgba(255, 255, 255, 0.16); color: #fff; }
+
+    .panel-body { padding: 16px 20px 20px 20px; }
+
+    .control-group { margin-bottom: 18px; }
+
+    .control-group label {
+      display: block;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 9px;
+      color: #999;
+    }
+
+    .swatch-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .swatch {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: transform 0.12s ease, border-color 0.12s ease;
+    }
+    .swatch:hover { transform: scale(1.12); }
+    .swatch.active { border-color: #fff; }
+
+    input[type="color"] {
+      -webkit-appearance: none;
+      border: none;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      cursor: pointer;
+      background: none;
+      padding: 0;
+    }
+    input[type="color"]::-webkit-color-swatch { border: 2px solid rgba(255,255,255,0.4); border-radius: 50%; }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent-color);
+    }
+
+    .range-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+    .range-row span {
+      font-size: 11px;
+      color: #ccc;
+      min-width: 34px;
+      text-align: right;
+    }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .toggle-row label { margin: 0; font-size: 12px; text-transform: none; color: #ddd; }
+    .switch {
+      position: relative;
+      width: 38px;
+      height: 21px;
+      flex-shrink: 0;
+    }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .switch-track {
+      position: absolute;
+      inset: 0;
+      background: rgba(255,255,255,0.15);
+      border-radius: 20px;
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+    .switch-track::before {
+      content: "";
+      position: absolute;
+      width: 15px;
+      height: 15px;
+      left: 3px;
+      top: 3px;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform 0.15s ease;
+    }
+    .switch input:checked + .switch-track { background: var(--accent-color); }
+    .switch input:checked + .switch-track::before { transform: translateX(17px); }
+
+    .status-box {
+      font-size: 12px;
+      padding: 10px 12px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      border-left: 3px solid #555;
+      line-height: 1.5;
+      margin-bottom: 14px;
+    }
+    .status-box.active { border-left-color: var(--accent-color); color: var(--accent-color); }
+
+    .hint {
+      font-size: 10.5px;
+      color: #6f6f6f;
+      line-height: 1.5;
+    }
+
+    /* ---- Compact always-visible status pill ---- */
+    #status-pill {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      z-index: 10;
+      font-size: 11px;
+      color: #999;
+      background: rgba(0,0,0,0.35);
+      backdrop-filter: blur(6px);
+      padding: 6px 10px;
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
+    }
+    #status-pill .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #666;
+      transition: background 0.2s ease;
+    }
+    #status-pill.active .dot { background: var(--accent-color); box-shadow: 0 0 6px var(--accent-color); }
+
+    /* ---- HUD ---- */
+    #hud {
+      position: absolute;
+      bottom: 46px;
+      left: 20px;
+      z-index: 10;
+      font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
+      font-size: 10px;
+      color: rgba(255,255,255,0.35);
+      line-height: 1.6;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    /* ---- Top-right controls ---- */
+    .top-right-controls {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      z-index: 10;
+      display: flex;
+      gap: 10px;
+    }
+
+    .icon-btn {
+      background: var(--bg-color);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: white;
+      width: 42px;
+      height: 42px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: border-color 0.15s ease;
+    }
+    .icon-btn:hover { border-color: var(--accent-color); }
+    .icon-btn.on { color: var(--accent-color); border-color: var(--accent-color); }
+
+    #loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: white;
+      font-size: 15px;
+      z-index: 100;
+      background: rgba(0,0,0,0.85);
+      padding: 15px 30px;
+      border-radius: 30px;
+      border: 1px solid var(--accent-color);
+      max-width: 80vw;
+      text-align: center;
+      transition: opacity 0.5s ease;
+    }
+  </style>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/MaskPass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/AfterimageShader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/AfterimagePass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+</head>
+
+<body>
+  <div id="loading">Loading Saturn and camera...</div>
+  <div id="canvas-container"></div>
+
+  <video id="webcam" autoplay playsinline muted></video>
+
+  <button id="panel-toggle" title="Open controls">🪐</button>
+
+  <div class="ui-panel collapsed" id="ui-panel">
+    <div class="panel-header">
+      <h2>🪐 Saturn Controls</h2>
+      <button id="panel-minimize" title="Minimize">–</button>
+    </div>
+    <div class="panel-body">
+
+      <div class="status-box" id="gesture-status">Waiting for camera permission...</div>
+
+      <div class="control-group">
+        <label>Particle Color</label>
+        <div class="swatch-row">
+          <div class="swatch active" data-color="#00ffcc" style="background:#00ffcc"></div>
+          <div class="swatch" data-color="#ff8c00" style="background:#ff8c00"></div>
+          <div class="swatch" data-color="#ff2d55" style="background:#ff2d55"></div>
+          <div class="swatch" data-color="#ffd60a" style="background:#ffd60a"></div>
+          <div class="swatch" data-color="#0a84ff" style="background:#0a84ff"></div>
+          <div class="swatch" data-color="#bf5af2" style="background:#bf5af2"></div>
+          <input type="color" id="particle-color" value="#00ffcc" title="Custom color" />
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label>Bloom Intensity</label>
+        <div class="range-row">
+          <input type="range" id="bloom-strength" min="0" max="3" step="0.05" value="0.55" />
+          <span id="bloom-strength-val">0.55</span>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label>Particle Size</label>
+        <div class="range-row">
+          <input type="range" id="particle-size" min="1" max="6" step="0.1" value="2.2" />
+          <span id="particle-size-val">2.2</span>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <div class="toggle-row">
+          <label>Motion Trails</label>
+          <label class="switch">
+            <input type="checkbox" id="trails-toggle" checked />
+            <span class="switch-track"></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="hint">
+        <strong>Fist, move closer:</strong> dive the camera into the particle field.<br />
+        <strong>Open hand, raise up:</strong> particles loosen and drift.<br />
+        <strong>Quick pinch:</strong> burst pulse outward.<br />
+        No hand: Saturn drifts on its own — move your mouse for parallax.
+      </div>
+    </div>
+  </div>
+
+  <div id="status-pill"><span class="dot"></span><span id="status-pill-text">Idle</span></div>
+  <div id="hud">FPS -- · PARTICLES --</div>
+
+  <div class="top-right-controls">
+    <button class="icon-btn" id="btn-audio" title="Toggle ambient audio">🔇</button>
+    <button class="icon-btn" id="btn-fullscreen" title="Fullscreen">⛶</button>
+  </div>
+
+  <script>
+    // =========================================================================
+    // Saturn — Interactive Particle Field
+    // A GPU-shader-driven particle Saturn that reacts to hand gestures:
+    //  - Fist + distance from camera  -> camera "dolly" dive + inward compression
+    //  - Open hand height             -> turbulence / looseness (noise-based drift)
+    //  - Quick pinch                  -> radial burst impulse (decays over time)
+    //  - No hand                      -> idle auto-rotate + mouse parallax
+    // All per-particle motion (turbulence, compression, burst, twinkle) happens
+    // in the vertex/fragment shaders — there is no per-frame CPU loop over particles.
+    // =========================================================================
+
+    let scene, camera, renderer, controls, composer, bloomPass, afterimagePass;
+    let particleGeometry, particleSystem, particleMaterial;
+    let clock;
+
+    const PARTICLE_COUNT = 70000;
+    const basePositions = new Float32Array(PARTICLE_COUNT * 3);
+    const seeds = new Float32Array(PARTICLE_COUNT);
+
+    const BASE_MODEL_SCALE = 1.75;
+
+    // Camera dolly range (world units along Z)
+    const CAMERA_Z_DEFAULT = 58;
+    const CAMERA_Z_MIN = 20;   // deepest "dive" when fist is close to the lens
+    const CAMERA_Z_MAX = 58;
+
+    const PALM_SIZE_MIN = 0.11;
+    const PALM_SIZE_MAX = 0.28;
+
+    const TURBULENCE_IDLE = 0.16;
+    const TURBULENCE_MAX = 1.3;
+
+    const IMPULSE_MAGNITUDE = 9.0;
+    const IMPULSE_DECAY = 1.8;
+
+    // Pinch trigger thresholds (thumb-to-index distance normalized by palm size)
+    const PINCH_CLOSE = 0.32;
+    const PINCH_OPEN = 0.75;
+
+    // ---- Gesture-driven state (smoothed each frame) ----
+    let targetRotationX = 0, targetRotationY = 0;
+    let currentRotationX = 0, currentRotationY = 0;
+    let autoRotation = 0;
+    let mouseNormX = 0, mouseNormY = 0;
+    let handActive = false;
+
+    let targetCameraZ = CAMERA_Z_DEFAULT;
+    let currentCameraZ = CAMERA_Z_DEFAULT;
+
+    let targetTurbulence = TURBULENCE_IDLE;
+    let currentTurbulence = TURBULENCE_IDLE;
+
+    let targetCompression = 0;
+    let currentCompression = 0;
+
+    let pinchClosed = false;
+
+    // ---- HUD state ----
+    let frameCount = 0;
+    let lastHudUpdate = 0;
+
+    function mapPalmSizeToScale01(palmSize) {
+      return THREE.MathUtils.clamp(
+        THREE.MathUtils.mapLinear(palmSize, PALM_SIZE_MIN, PALM_SIZE_MAX, 0, 1),
+        0, 1
+      );
+    }
+
+    function generateSaturnPositions() {
+      for (let i = 0; i < PARTICLE_COUNT; i++) {
+        const i3 = i * 3;
+        seeds[i] = Math.random();
+
+        if (i < PARTICLE_COUNT * 0.42) {
+          // Core sphere
+          const theta = Math.random() * Math.PI * 2;
+          const phi = Math.acos(2 * Math.random() - 1);
+          const latFlatten = 0.82 + Math.random() * 0.06;
+          const r = 11.5 * Math.cbrt(Math.random());
+          basePositions[i3] = r * Math.sin(phi) * Math.cos(theta);
+          basePositions[i3 + 1] = r * Math.sin(phi) * Math.sin(theta) * latFlatten;
+          basePositions[i3 + 2] = r * Math.cos(phi);
+        } else {
+          // Ring bands
+          const ringBand = Math.random();
+          const bandBase =
+            ringBand < 0.22 ? 14.5 :
+            ringBand < 0.48 ? 18.5 :
+            ringBand < 0.72 ? 23.5 :
+            28.5;
+          const rRing = bandBase + Math.random() * 3.5 + Math.sin(bandBase * 1.7 + i * 0.013) * 0.9;
+          const thetaRing = Math.random() * Math.PI * 2;
+          const ringRipple = Math.sin(thetaRing * 10 + rRing * 0.9) * 0.45 + Math.sin(thetaRing * 23) * 0.18;
+          const ringThickness = (Math.random() - 0.5) * (0.45 + ringBand * 0.85);
+          basePositions[i3] = (rRing + ringRipple) * Math.cos(thetaRing);
+          basePositions[i3 + 1] = ringThickness;
+          basePositions[i3 + 2] = (rRing + ringRipple) * Math.sin(thetaRing);
+        }
+      }
+    }
+
+    // ---- Classic 3D simplex noise (Ashima Arts / Ian McEwan, MIT-licensed "webgl-noise") ----
+    const SNOISE_GLSL = `
+      vec3 mod289(vec3 x){return x - floor(x * (1.0/289.0)) * 289.0;}
+      vec4 mod289(vec4 x){return x - floor(x * (1.0/289.0)) * 289.0;}
+      vec4 permute(vec4 x){return mod289(((x*34.0)+1.0)*x);}
+      vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}
+
+      float snoise(vec3 v){
+        const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+        const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+
+        vec3 i  = floor(v + dot(v, C.yyy));
+        vec3 x0 = v - i + dot(i, C.xxx);
+
+        vec3 g = step(x0.yzx, x0.xyz);
+        vec3 l = 1.0 - g;
+        vec3 i1 = min(g.xyz, l.zxy);
+        vec3 i2 = max(g.xyz, l.zxy);
+
+        vec3 x1 = x0 - i1 + C.xxx;
+        vec3 x2 = x0 - i2 + C.yyy;
+        vec3 x3 = x0 - D.yyy;
+
+        i = mod289(i);
+        vec4 p = permute( permute( permute(
+                   i.z + vec4(0.0, i1.z, i2.z, 1.0))
+                 + i.y + vec4(0.0, i1.y, i2.y, 1.0))
+                 + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+
+        float n_ = 0.142857142857;
+        vec3 ns = n_ * D.wyz - D.xzx;
+
+        vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+
+        vec4 x_ = floor(j * ns.z);
+        vec4 y_ = floor(j - 7.0 * x_);
+
+        vec4 x = x_ * ns.x + ns.yyyy;
+        vec4 y = y_ * ns.x + ns.yyyy;
+        vec4 h = 1.0 - abs(x) - abs(y);
+
+        vec4 b0 = vec4(x.xy, y.xy);
+        vec4 b1 = vec4(x.zw, y.zw);
+
+        vec4 s0 = floor(b0) * 2.0 + 1.0;
+        vec4 s1 = floor(b1) * 2.0 + 1.0;
+        vec4 sh = -step(h, vec4(0.0));
+
+        vec4 a0 = b0.xzyw + s0.xzyw * sh.xxyy;
+        vec4 a1 = b1.xzyw + s1.xzyw * sh.zzww;
+
+        vec3 p0 = vec3(a0.xy, h.x);
+        vec3 p1 = vec3(a0.zw, h.y);
+        vec3 p2 = vec3(a1.xy, h.z);
+        vec3 p3 = vec3(a1.zw, h.w);
+
+        vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
+        p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+
+        vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+        m = m * m;
+        return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
+      }
+    `;
+
+    const VERTEX_SHADER = `
+      attribute vec3 aBasePos;
+      attribute float aSeed;
+
+      uniform float uTime;
+      uniform float uScale;
+      uniform float uTurbulence;
+      uniform float uCompression;
+      uniform float uImpulseTime;
+      uniform float uImpulseStrength;
+      uniform float uSize;
+      uniform float uPixelRatio;
+
+      varying float vSeed;
+
+      ${SNOISE_GLSL}
+
+      void main() {
+        vec3 base = aBasePos * (1.0 - uCompression);
+
+        float t = uTime * 0.15 + aSeed * 12.0;
+        vec3 n = vec3(
+          snoise(base * 0.055 + vec3(0.0, 0.0, t)),
+          snoise(base * 0.055 + vec3(5.2, 1.3, t)),
+          snoise(base * 0.055 + vec3(1.7, 9.2, t))
+        );
+
+        vec3 pos = base + n * uTurbulence;
+
+        // Radial burst impulse from a pinch gesture, decaying exponentially over time
+        float dt = max(uTime - uImpulseTime, 0.0);
+        float impulse = uImpulseStrength * exp(-dt * ${IMPULSE_DECAY.toFixed(2)});
+        pos += normalize(aBasePos + vec3(0.0001)) * impulse;
+
+        pos *= uScale;
+
+        vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+        float size = uSize * uPixelRatio * (220.0 / -mvPosition.z);
+        gl_PointSize = clamp(size, 1.0, 6.0);
+        gl_Position = projectionMatrix * mvPosition;
+
+        vSeed = aSeed;
+      }
+    `;
+
+    const FRAGMENT_SHADER = `
+      uniform vec3 uColor;
+      uniform float uOpacity;
+      uniform float uTime;
+      varying float vSeed;
+
+      void main() {
+        vec2 c = gl_PointCoord - vec2(0.5);
+        float d = length(c);
+        if (d > 0.5) discard;
+        float twinkle = 0.7 + 0.3 * sin(uTime * 2.0 + vSeed * 6.2831);
+        float alpha = smoothstep(0.5, 0.0, d) * uOpacity * twinkle;
+        gl_FragColor = vec4(uColor, alpha);
+      }
+    `;
+
+    function initThree() {
+      const container = document.getElementById("canvas-container");
+
+      scene = new THREE.Scene();
+      scene.fog = new THREE.FogExp2(0x030304, 0.011);
+
+      camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+      camera.position.set(0, 5, CAMERA_Z_DEFAULT);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      container.appendChild(renderer.domElement);
+
+      controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+
+      clock = new THREE.Clock();
+
+      generateSaturnPositions();
+
+      particleGeometry = new THREE.BufferGeometry();
+      // Three.js's renderer reads the "position" attribute internally to determine
+      // the draw vertex count, even though our vertex shader reads aBasePos instead.
+      particleGeometry.setAttribute("position", new THREE.BufferAttribute(basePositions, 3));
+      particleGeometry.setAttribute("aBasePos", new THREE.BufferAttribute(basePositions, 3));
+      particleGeometry.setAttribute("aSeed", new THREE.BufferAttribute(seeds, 1));
+
+      const startColor = new THREE.Color(document.getElementById("particle-color").value);
+
+      particleMaterial = new THREE.ShaderMaterial({
+        uniforms: {
+          uTime: { value: 0 },
+          uScale: { value: BASE_MODEL_SCALE },
+          uTurbulence: { value: TURBULENCE_IDLE },
+          uCompression: { value: 0 },
+          uImpulseTime: { value: -999 },
+          uImpulseStrength: { value: IMPULSE_MAGNITUDE },
+          uSize: { value: 2.2 },
+          uPixelRatio: { value: Math.min(window.devicePixelRatio || 1, 2) },
+          uColor: { value: startColor },
+          uOpacity: { value: 0.85 }
+        },
+        vertexShader: VERTEX_SHADER,
+        fragmentShader: FRAGMENT_SHADER,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+      });
+
+      particleSystem = new THREE.Points(particleGeometry, particleMaterial);
+      particleSystem.frustumCulled = false;
+      scene.add(particleSystem);
+
+      // ---- Postprocessing: motion trails (afterimage) + bloom glow ----
+      composer = new THREE.EffectComposer(renderer);
+      composer.addPass(new THREE.RenderPass(scene, camera));
+
+      afterimagePass = new THREE.AfterimagePass();
+      afterimagePass.uniforms["damp"].value = 0.85;
+      composer.addPass(afterimagePass);
+
+      bloomPass = new THREE.UnrealBloomPass(
+        new THREE.Vector2(window.innerWidth, window.innerHeight),
+        0.55,  // strength
+        0.4,   // radius
+        0.25   // threshold
+      );
+      composer.addPass(bloomPass);
+
+      window.addEventListener("resize", onWindowResize);
+      window.addEventListener("mousemove", onMouseMove);
+    }
+
+    function onMouseMove(e) {
+      mouseNormX = (e.clientX / window.innerWidth) * 2 - 1;
+      mouseNormY = (e.clientY / window.innerHeight) * 2 - 1;
+    }
+
+    function initWebcamAndAI() {
+      const videoElement = document.getElementById("webcam");
+      const statusBox = document.getElementById("gesture-status");
+      const statusPill = document.getElementById("status-pill");
+      const statusPillText = document.getElementById("status-pill-text");
+      const loadingText = document.getElementById("loading");
+
+      if (!window.Hands || !window.Camera) {
+        loadingText.textContent = "MediaPipe failed to load: check your network or refresh. Saturn still renders and idles on its own.";
+        statusBox.textContent = "AI gesture library failed to load — idle mode only.";
+        setTimeout(() => loadingText.remove(), 3000);
+        return;
+      }
+
+      const hands = new Hands({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+      });
+
+      hands.setOptions({
+        maxNumHands: 1,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+      });
+
+      hands.onResults((results) => {
+        if (loadingText && document.body.contains(loadingText)) {
+          loadingText.style.opacity = "0";
+          setTimeout(() => loadingText.remove(), 500);
+        }
+
+        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+          handActive = true;
+          statusBox.classList.add("active");
+          statusPill.classList.add("active");
+
+          const hand1 = results.multiHandLandmarks[0];
+          const wrist = hand1[0];
+          const thumbTip = hand1[4];
+          const thumbIP = hand1[3];
+          const indexPip = hand1[6];
+          const indexTip = hand1[8];
+          const middlePip = hand1[10];
+          const middleTip = hand1[12];
+          const ringPip = hand1[14];
+          const middleBase = hand1[9];
+          const ringTip = hand1[16];
+          const pinkyPip = hand1[18];
+          const pinkyTip = hand1[20];
+
+          const palmSize = Math.hypot(wrist.x - middleBase.x, wrist.y - middleBase.y) || 0.08;
+          const palmCenterX = (wrist.x + middleBase.x) * 0.5;
+          const palmCenterY = (wrist.y + middleBase.y) * 0.5;
+
+          const fingertipSpread =
+            (
+              Math.hypot(thumbTip.x - palmCenterX, thumbTip.y - palmCenterY) +
+              Math.hypot(indexTip.x - palmCenterX, indexTip.y - palmCenterY) +
+              Math.hypot(middleTip.x - palmCenterX, middleTip.y - palmCenterY) +
+              Math.hypot(ringTip.x - palmCenterX, ringTip.y - palmCenterY) +
+              Math.hypot(pinkyTip.x - palmCenterX, pinkyTip.y - palmCenterY)
+            ) / 5;
+          const openness = fingertipSpread / palmSize;
+
+          const thumbCurled =
+            Math.hypot(thumbTip.x - palmCenterX, thumbTip.y - palmCenterY) <
+            Math.hypot(thumbIP.x - palmCenterX, thumbIP.y - palmCenterY) * 1.1;
+          const indexCurled = Math.hypot(indexTip.x - wrist.x, indexTip.y - wrist.y) < Math.hypot(indexPip.x - wrist.x, indexPip.y - wrist.y) * 1.08;
+          const middleCurled = Math.hypot(middleTip.x - wrist.x, middleTip.y - wrist.y) < Math.hypot(middlePip.x - wrist.x, middlePip.y - wrist.y) * 1.08;
+          const ringCurled = Math.hypot(ringTip.x - wrist.x, ringTip.y - wrist.y) < Math.hypot(ringPip.x - wrist.x, ringPip.y - wrist.y) * 1.08;
+          const pinkyCurled = Math.hypot(pinkyTip.x - wrist.x, pinkyTip.y - wrist.y) < Math.hypot(pinkyPip.x - wrist.x, pinkyPip.y - wrist.y) * 1.12;
+          const curledCount = [indexCurled, middleCurled, ringCurled, pinkyCurled].filter(Boolean).length;
+          const isFist = openness < 1.72 && thumbCurled && curledCount >= 3;
+
+          // Hand position drives rotation (same in both fist/open states)
+          const handCenterX = (wrist.x + middleBase.x + hand1[5].x + hand1[17].x) * 0.25;
+          const handCenterY = (wrist.y + middleBase.y + hand1[5].y + hand1[17].y) * 0.25;
+          targetRotationY = -(handCenterX - 0.5) * Math.PI * 1.8;
+          targetRotationX = (handCenterY - 0.5) * Math.PI * 1.1;
+
+          // ---- Fist + distance -> camera dolly dive + inward compression ----
+          if (isFist) {
+            const depth01 = mapPalmSizeToScale01(palmSize); // 0 = hand far, 1 = hand close to lens
+            targetCameraZ = THREE.MathUtils.lerp(CAMERA_Z_MAX, CAMERA_Z_MIN, depth01);
+            targetCompression = THREE.MathUtils.lerp(0, 0.28, depth01);
+          } else {
+            targetCameraZ = CAMERA_Z_DEFAULT;
+            targetCompression = 0;
+          }
+
+          // ---- Open hand height -> turbulence / looseness ----
+          if (!isFist) {
+            const raise01 = THREE.MathUtils.clamp(0.62 - handCenterY, 0, 0.62) / 0.62;
+            targetTurbulence = TURBULENCE_IDLE + raise01 * (TURBULENCE_MAX - TURBULENCE_IDLE);
+          } else {
+            targetTurbulence = TURBULENCE_IDLE;
+          }
+
+          // ---- Quick pinch -> burst impulse ----
+          let pinchStatusText = "Pinch thumb + index for a burst";
+          if (!isFist) {
+            const pinchDist = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y) / palmSize;
+            if (pinchDist < PINCH_CLOSE && !pinchClosed) {
+              pinchClosed = true;
+              const u = particleMaterial.uniforms;
+              u.uImpulseTime.value = clock.getElapsedTime();
+              pinchStatusText = "Burst!";
+            } else if (pinchDist > PINCH_OPEN) {
+              pinchClosed = false;
+            } else if (pinchClosed) {
+              pinchStatusText = "Burst!";
+            }
+          }
+
+          statusBox.innerHTML =
+            `Gesture: ${isFist ? "Fist (dolly + compress)" : "Open hand"}<br>` +
+            `Turbulence: ${targetTurbulence.toFixed(2)} &nbsp; ${pinchStatusText}`;
+          statusPillText.textContent = isFist ? "Diving in" : "Tracking hand";
+        } else {
+          handActive = false;
+          statusBox.classList.remove("active");
+          statusPill.classList.remove("active");
+          statusBox.textContent = "No hand detected — Saturn is idling. Show your hand to interact.";
+          statusPillText.textContent = "Idle";
+          targetCameraZ = CAMERA_Z_DEFAULT;
+          targetCompression = 0;
+          targetTurbulence = TURBULENCE_IDLE;
+          pinchClosed = false;
+        }
+      });
+
+      const cameraUtils = new Camera(videoElement, {
+        onFrame: async () => {
+          await hands.send({ image: videoElement });
+        },
+        width: 640,
+        height: 480
+      });
+
+      cameraUtils.start()
+        .then(() => {
+          statusBox.textContent = "Camera started. Raise your hand into view.";
+        })
+        .catch((err) => {
+          console.error(err);
+          loadingText.textContent = "Camera access failed: please allow camera permission, and make sure the page is served from localhost / 127.0.0.1 or HTTPS.";
+          statusBox.textContent = "Camera unavailable — Saturn will idle and respond to your mouse instead.";
+        });
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      if (!particleSystem || !particleMaterial) return;
+
+      const elapsed = clock.getElapsedTime();
+      const delta = clock.getDelta();
+
+      // ---- Idle auto-rotation + mouse parallax when no hand is active ----
+      if (!handActive) {
+        autoRotation += delta * 0.12;
+        targetRotationY = autoRotation + mouseNormX * 0.25;
+        targetRotationX = mouseNormY * 0.15;
+      }
+
+      currentRotationX += (targetRotationX - currentRotationX) * 0.05;
+      currentRotationY += (targetRotationY - currentRotationY) * 0.05;
+      particleSystem.rotation.x = currentRotationX;
+      particleSystem.rotation.y = currentRotationY;
+
+      currentCameraZ += (targetCameraZ - currentCameraZ) * 0.06;
+      camera.position.z = currentCameraZ;
+
+      currentTurbulence += (targetTurbulence - currentTurbulence) * 0.08;
+      currentCompression += (targetCompression - currentCompression) * 0.08;
+
+      const u = particleMaterial.uniforms;
+      u.uTime.value = elapsed;
+      u.uTurbulence.value = currentTurbulence;
+      u.uCompression.value = currentCompression;
+
+      controls.update();
+      composer.render();
+
+      // ---- HUD update (throttled to ~2x per second) ----
+      frameCount++;
+      if (elapsed - lastHudUpdate > 0.5) {
+        const fps = Math.round(frameCount / (elapsed - lastHudUpdate));
+        document.getElementById("hud").textContent = `FPS ${fps} · PARTICLES ${PARTICLE_COUNT.toLocaleString()}`;
+        frameCount = 0;
+        lastHudUpdate = elapsed;
+      }
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      composer.setSize(window.innerWidth, window.innerHeight);
+      particleMaterial.uniforms.uPixelRatio.value = Math.min(window.devicePixelRatio || 1, 2);
+    }
+
+    // =========================================================================
+    // UI wiring
+    // =========================================================================
+    function setupUI() {
+      const panel = document.getElementById("ui-panel");
+      const panelToggle = document.getElementById("panel-toggle");
+      const panelMinimize = document.getElementById("panel-minimize");
+
+      panelToggle.addEventListener("click", () => {
+        panel.classList.remove("collapsed");
+        panelToggle.classList.add("hidden");
+      });
+      panelMinimize.addEventListener("click", () => {
+        panel.classList.add("collapsed");
+        panelToggle.classList.remove("hidden");
+      });
+
+      const colorInput = document.getElementById("particle-color");
+      const swatches = document.querySelectorAll(".swatch");
+
+      function setColor(hex) {
+        if (particleMaterial) particleMaterial.uniforms.uColor.value.set(hex);
+        document.documentElement.style.setProperty("--accent-color", hex);
+        colorInput.value = hex;
+        swatches.forEach((s) => s.classList.toggle("active", s.dataset.color.toLowerCase() === hex.toLowerCase()));
+      }
+
+      swatches.forEach((s) => {
+        s.addEventListener("click", () => setColor(s.dataset.color));
+      });
+      colorInput.addEventListener("input", (e) => {
+        setColor(e.target.value);
+        swatches.forEach((s) => s.classList.remove("active"));
+      });
+
+      const bloomSlider = document.getElementById("bloom-strength");
+      const bloomVal = document.getElementById("bloom-strength-val");
+      bloomSlider.addEventListener("input", (e) => {
+        const val = parseFloat(e.target.value);
+        bloomVal.textContent = val.toFixed(2);
+        if (bloomPass) bloomPass.strength = val;
+      });
+
+      const sizeSlider = document.getElementById("particle-size");
+      const sizeVal = document.getElementById("particle-size-val");
+      sizeSlider.addEventListener("input", (e) => {
+        const val = parseFloat(e.target.value);
+        sizeVal.textContent = val.toFixed(1);
+        if (particleMaterial) particleMaterial.uniforms.uSize.value = val;
+      });
+
+      const trailsToggle = document.getElementById("trails-toggle");
+      trailsToggle.addEventListener("change", (e) => {
+        if (afterimagePass) afterimagePass.enabled = e.target.checked;
+      });
+
+      document.getElementById("btn-fullscreen").addEventListener("click", () => {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen();
+        } else {
+          document.exitFullscreen();
+        }
+      });
+
+      setupAudio();
+    }
+
+    // =========================================================================
+    // Optional ambient audio: a soft low drone whose pitch/gain follows
+    // turbulence, muted by default. Created lazily on first user click to
+    // satisfy browser autoplay policies.
+    // =========================================================================
+    function setupAudio() {
+      const btnAudio = document.getElementById("btn-audio");
+      let audioCtx = null;
+      let oscillator = null;
+      let gainNode = null;
+      let filterNode = null;
+      let audioOn = false;
+
+      function ensureAudioGraph() {
+        if (audioCtx) return;
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        oscillator = audioCtx.createOscillator();
+        filterNode = audioCtx.createBiquadFilter();
+        gainNode = audioCtx.createGain();
+
+        oscillator.type = "sine";
+        oscillator.frequency.value = 90;
+        filterNode.type = "lowpass";
+        filterNode.frequency.value = 400;
+        gainNode.gain.value = 0;
+
+        oscillator.connect(filterNode);
+        filterNode.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        oscillator.start();
+
+        // Keep oscillator frequency loosely tied to turbulence for a subtle
+        // audio-reactive feel, sampled a few times a second.
+        setInterval(() => {
+          if (!audioOn || !particleMaterial) return;
+          const turb = particleMaterial.uniforms.uTurbulence.value;
+          const freq = 90 + turb * 40;
+          oscillator.frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.3);
+        }, 150);
+      }
+
+      btnAudio.addEventListener("click", () => {
+        ensureAudioGraph();
+        if (audioCtx.state === "suspended") audioCtx.resume();
+
+        audioOn = !audioOn;
+        btnAudio.textContent = audioOn ? "🔊" : "🔇";
+        btnAudio.classList.toggle("on", audioOn);
+        const targetGain = audioOn ? 0.05 : 0.0;
+        gainNode.gain.setTargetAtTime(targetGain, audioCtx.currentTime, 0.4);
+      });
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      initThree();
+      setupUI();
+      animate();
+      initWebcamAndAI();
+    });
+  </script>
+</body>
+</html>
